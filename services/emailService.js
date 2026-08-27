@@ -74,6 +74,35 @@ export async function sendEmail({ to, subject, html, text }) {
       return { success: false, reason: 'No recipient email specified' }
     }
 
+    // 1. Primary Engine: Resend HTTP REST API (Bypasses cloud server SMTP port blocks 100%)
+    if (process.env.RESEND_API_KEY) {
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: process.env.EMAIL_FROM || 'AutoGenuine Parts <onboarding@resend.dev>',
+            to: Array.isArray(to) ? to : [to],
+            subject,
+            html,
+            text: text || subject,
+          }),
+        })
+        const data = await res.json()
+        if (res.ok && data.id) {
+          console.log(`✉️ [emailService] (Resend HTTPS) Email sent successfully to ${to} (ID: ${data.id})`)
+          return { success: true, messageId: data.id }
+        }
+        console.warn(`⚠️ [emailService] Resend API notice: ${data.message || JSON.stringify(data)}. Falling back to SMTP...`)
+      } catch (apiErr) {
+        console.warn('⚠️ [emailService] Resend API request failed:', apiErr.message)
+      }
+    }
+
+    // 2. Secondary Engine: Nodemailer SMTP
     const transport = getTransporter()
     if (!transport) {
       console.log(`ℹ️ [emailService] Email dispatch skipped (SMTP credentials missing). Target: ${to} | Subject: "${subject}"`)
