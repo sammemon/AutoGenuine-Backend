@@ -10,9 +10,9 @@ let isTransporterVerified = false
 export function getTransporter() {
   if (transporter) return transporter
 
-  const host = process.env.SMTP_HOST
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
+  const host = process.env.SMTP_HOST || 'smtp.gmail.com'
+  const user = process.env.SMTP_USER || 'sm275665@gmail.com'
+  const pass = process.env.SMTP_PASS || 'jcef kbev socn qavm'
   const port = parseInt(process.env.SMTP_PORT || '587', 10)
   const secure = process.env.SMTP_SECURE === 'true' || port === 465
 

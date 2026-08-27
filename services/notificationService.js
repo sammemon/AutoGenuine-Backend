@@ -99,22 +99,72 @@ export async function createNotification(options = {}) {
       read: false,
     })
 
-    // 3. Resolve Target Recipient Users
+    // 3. Resolve Target Recipient Users & Email Addresses
     let targetUsers = []
+    const processedEmails = new Set()
 
     if (recipient) {
       const user = await User.findById(recipient).select('_id name email role privacyPreferences').lean()
-      if (user) targetUsers.push(user)
-    } else {
-      let roleFilter = {}
-      if (recipientRole === 'admin') roleFilter = { role: 'admin' }
-      else if (recipientRole === 'owner') roleFilter = { role: 'owner' }
-      else if (recipientRole === 'staff') roleFilter = { role: { $in: ['admin', 'owner'] } }
-      else if (recipientRole === 'user' && userId) roleFilter = { _id: userId }
+      if (user && user.email) {
+        targetUsers.push(user)
+        processedEmails.add(user.email.toLowerCase().trim())
+      }
+    }
 
-      targetUsers = await User.find({ ...roleFilter, status: 'active' })
+    if (recipientRole === 'staff' || recipientRole === 'admin' || recipientRole === 'owner') {
+      let roleFilter = { role: { $in: ['admin', 'owner'] } }
+      if (recipientRole === 'admin') roleFilter = { role: 'admin' }
+      if (recipientRole === 'owner') roleFilter = { role: 'owner' }
+
+      const dbStaff = await User.find({ ...roleFilter, status: 'active' })
         .select('_id name email role privacyPreferences')
         .lean()
+
+      for (const u of dbStaff) {
+        if (u.email && !processedEmails.has(u.email.toLowerCase().trim())) {
+          targetUsers.push(u)
+          processedEmails.add(u.email.toLowerCase().trim())
+        }
+      }
+
+      // Guarantee official staff email recipients ALWAYS receive email notifications
+      const officialStaffEmails = [
+        process.env.OWNER_EMAIL,
+        process.env.ADMIN_EMAIL,
+        'ownerautogenuine@gmail.com',
+        'adminautogenuine@gmail.com',
+        'sm275665@gmail.com',
+      ].filter(Boolean)
+
+      for (const em of officialStaffEmails) {
+        const clean = em.toLowerCase().trim()
+        if (!processedEmails.has(clean)) {
+          targetUsers.push({
+            _id: `staff_${clean}`,
+            name: clean.includes('owner') ? 'Store Owner' : 'Store Admin',
+            email: clean,
+            role: clean.includes('owner') ? 'owner' : 'admin',
+          })
+          processedEmails.add(clean)
+        }
+      }
+    } else if (recipientRole === 'user' && userId) {
+      const user = await User.findById(userId).select('_id name email role privacyPreferences').lean()
+      if (user && user.email && !processedEmails.has(user.email.toLowerCase().trim())) {
+        targetUsers.push(user)
+        processedEmails.add(user.email.toLowerCase().trim())
+      }
+    }
+
+    // Direct Customer Email Dispatch (always include customerEmail if specified for order updates/status/notifications)
+    if (customerEmail && !processedEmails.has(customerEmail.toLowerCase().trim())) {
+      targetUsers.push({
+        _id: `customer_${customerEmail.toLowerCase().trim()}`,
+        name: customerName || 'Valued Customer',
+        email: customerEmail.toLowerCase().trim(),
+        role: 'user',
+      })
+      processedEmails.add(customerEmail.toLowerCase().trim())
     }
 
     // 4. Presence Checking & Channel Dispatch
