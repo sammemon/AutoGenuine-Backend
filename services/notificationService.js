@@ -61,10 +61,11 @@ export async function createNotification(options = {}) {
       metadata = {},
     } = options
 
-    // 1. Idempotency & Duplicate Protection Check (within last 3 seconds for identical type & orderId/conversationId)
+    // 1. Idempotency & Duplicate Protection Check (within last 3 seconds for identical type, recipientRole & orderId/conversationId)
     if (orderId || conversationId) {
       const existing = await Notification.findOne({
         type,
+        recipientRole,
         ...(orderId ? { orderId } : {}),
         ...(conversationId ? { conversationId } : {}),
         createdAt: { $gte: new Date(Date.now() - 3000) },
