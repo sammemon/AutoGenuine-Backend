@@ -24,6 +24,8 @@ import { handleStripeWebhook } from './controllers/stripeController.js'
 import { requestLogger } from './middleware/logger.js'
 import { getSystemStats, renderDashboardHtml } from './dashboard.js'
 
+const app = express()
+
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
