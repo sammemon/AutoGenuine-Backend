@@ -157,6 +157,11 @@ export function initSocket(httpServer) {
           throw new Error('You are not a participant')
         }
 
+        // Prevent customers from sending messages on closed or resolved tickets
+        if (user.role === 'user' && ['closed', 'resolved'].includes(conversation.supportStatus)) {
+          throw new Error('This support ticket is closed and resolved. Submit a reopen request to send messages.')
+        }
+
         const otherParticipants = conversation.participants.filter((p) => String(p) !== String(user._id))
         const blockExists = await UserBlock.findOne({
           $or: otherParticipants.map((p) => ({ blocker: p, blocked: user._id })),
