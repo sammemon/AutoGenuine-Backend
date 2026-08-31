@@ -54,7 +54,7 @@ async function runTests() {
     const ownerRes = await fetch(`${BASE_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier: process.env.OWNER_EMAIL || 'owner@autogenuine.com', password: process.env.OWNER_PASSWORD || 'owner12345' }),
+      body: JSON.stringify({ identifier: process.env.OWNER_EMAIL || 'OwnerAutogenuine@gmail.com', password: process.env.OWNER_PASSWORD || 'owner12345' }),
     })
     const ownerData = await ownerRes.json()
     if (!ownerRes.ok) throw new Error(`Owner login failed: ${JSON.stringify(ownerData)}`)
@@ -65,7 +65,7 @@ async function runTests() {
     const adminRes = await fetch(`${BASE_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier: process.env.ADMIN_EMAIL || 'admin@autogenuine.com', password: process.env.ADMIN_PASSWORD || 'admin12345' }),
+      body: JSON.stringify({ identifier: process.env.ADMIN_EMAIL || 'adminautogenuine@gmail.com', password: process.env.ADMIN_PASSWORD || 'admin12345' }),
     })
     const adminData = await adminRes.json()
     if (!adminRes.ok) throw new Error(`Admin login failed: ${JSON.stringify(adminData)}`)

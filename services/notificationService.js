@@ -122,17 +122,30 @@ export async function createNotification(options = {}) {
         .lean()
 
       for (const u of dbStaff) {
-        if (u.email && !processedEmails.has(u.email.toLowerCase().trim())) {
-          targetUsers.push(u)
-          processedEmails.add(u.email.toLowerCase().trim())
+        if (!u.email) continue
+        let emailClean = u.email.toLowerCase().trim()
+
+        // Remap legacy dummy staff emails
+        if (emailClean === 'owner@autogenuine.com' || emailClean === 'owner@example.com') {
+          emailClean = (process.env.OWNER_EMAIL || 'OwnerAutogenuine@gmail.com').toLowerCase().trim()
+        } else if (emailClean === 'admin@autogenuine.com' || emailClean === 'admin@example.com') {
+          emailClean = (process.env.ADMIN_EMAIL || 'adminautogenuine@gmail.com').toLowerCase().trim()
+        }
+
+        if (!processedEmails.has(emailClean)) {
+          targetUsers.push({
+            ...u,
+            email: emailClean,
+          })
+          processedEmails.add(emailClean)
         }
       }
 
       // Guarantee official staff email recipients ALWAYS receive email notifications
       const officialStaffEmails = [
-        process.env.OWNER_EMAIL,
-        process.env.ADMIN_EMAIL,
-        'ownerautogenuine@gmail.com',
+        process.env.OWNER_EMAIL || 'OwnerAutogenuine@gmail.com',
+        process.env.ADMIN_EMAIL || 'adminautogenuine@gmail.com',
+        'OwnerAutogenuine@gmail.com',
         'adminautogenuine@gmail.com',
         'sm275665@gmail.com',
       ].filter(Boolean)

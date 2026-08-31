@@ -10,6 +10,7 @@ import http from 'http'
 import express from 'express'
 import cors from 'cors'
 import { connectDB } from './config/db.js'
+import User from './models/User.js'
 import { initSocket } from './socket.js'
 import authRoutes from './routes/auth.js'
 import catalogRoutes from './routes/catalog.js'
@@ -122,7 +123,23 @@ const PORT = process.env.PORT || 5000
 const httpServer = http.createServer(app)
 initSocket(httpServer)
 
-connectDB(process.env.MONGODB_URI || 'mongodb://localhost:27017/autogenuine').then(() => {
+connectDB(process.env.MONGODB_URI || 'mongodb://localhost:27017/autogenuine').then(async () => {
+  try {
+    const ownerEmail = (process.env.OWNER_EMAIL || 'OwnerAutogenuine@gmail.com').toLowerCase().trim()
+    const adminEmail = (process.env.ADMIN_EMAIL || 'adminautogenuine@gmail.com').toLowerCase().trim()
+
+    await User.updateMany(
+      { email: { $in: ['owner@autogenuine.com', 'owner@example.com'] } },
+      { email: ownerEmail }
+    )
+    await User.updateMany(
+      { email: { $in: ['admin@autogenuine.com', 'admin@example.com'] } },
+      { email: adminEmail }
+    )
+  } catch (err) {
+    console.warn('⚠️ User email migration notice:', err.message)
+  }
+
   httpServer.listen(PORT, () => {
     console.log(`✓ Server & Socket.io running on http://localhost:${PORT}`)
     startAutoPilotScheduler()

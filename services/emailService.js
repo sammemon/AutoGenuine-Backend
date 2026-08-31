@@ -74,38 +74,30 @@ export async function sendEmail({ to, subject, html, text }) {
       return { success: false, reason: 'No recipient email specified' }
     }
 
-    // 1. Primary Engine: Resend HTTP REST API (Bypasses cloud server SMTP port blocks 100%)
-    if (process.env.RESEND_API_KEY) {
-      try {
-        const res = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: process.env.EMAIL_FROM || 'AutoGenuine Parts <onboarding@resend.dev>',
-            to: Array.isArray(to) ? to : [to],
-            subject,
-            html,
-            text: text || subject,
-          }),
-        })
-        const data = await res.json()
-        if (res.ok && data.id) {
-          console.log(`✉️ [emailService] (Resend HTTPS) Email sent successfully to ${to} (ID: ${data.id})`)
-          return { success: true, messageId: data.id }
-        }
-        console.warn(`⚠️ [emailService] Resend API notice: ${data.message || JSON.stringify(data)}. Falling back to SMTP...`)
-      } catch (apiErr) {
-        console.warn('⚠️ [emailService] Resend API request failed:', apiErr.message)
+    // Remap legacy dummy email targets to actual staff mailbox addresses
+    let recipientTo = to
+    const remapEmail = (addr) => {
+      if (!addr) return addr
+      const lower = String(addr).toLowerCase().trim()
+      if (lower === 'owner@autogenuine.com' || lower === 'owner@example.com') {
+        return process.env.OWNER_EMAIL || 'OwnerAutogenuine@gmail.com'
       }
+      if (lower === 'admin@autogenuine.com' || lower === 'admin@example.com') {
+        return process.env.ADMIN_EMAIL || 'adminautogenuine@gmail.com'
+      }
+      return addr
     }
 
-    // 2. Secondary Engine: Nodemailer SMTP
+    if (typeof recipientTo === 'string') {
+      recipientTo = remapEmail(recipientTo)
+    } else if (Array.isArray(recipientTo)) {
+      recipientTo = recipientTo.map(remapEmail)
+    }
+
+    // Nodemailer SMTP Engine (Resend API method removed per configuration)
     const transport = getTransporter()
     if (!transport) {
-      console.log(`ℹ️ [emailService] Email dispatch skipped (SMTP credentials missing). Target: ${to} | Subject: "${subject}"`)
+      console.log(`ℹ️ [emailService] Email dispatch skipped (SMTP credentials missing). Target: ${recipientTo} | Subject: "${subject}"`)
       return { success: false, reason: 'SMTP credentials missing' }
     }
 
@@ -115,7 +107,7 @@ export async function sendEmail({ to, subject, html, text }) {
     const mailOptions = {
       from,
       replyTo,
-      to,
+      to: recipientTo,
       subject,
       text: text || subject,
       html,
@@ -129,7 +121,7 @@ export async function sendEmail({ to, subject, html, text }) {
     }
 
     const info = await transport.sendMail(mailOptions)
-    console.log(`✉️ [emailService] Email sent successfully to ${to} (MessageId: ${info.messageId})`)
+    console.log(`✉️ [emailService] Email sent successfully to ${Array.isArray(recipientTo) ? recipientTo.join(', ') : recipientTo} (MessageId: ${info.messageId})`)
 
     return {
       success: true,

@@ -34,8 +34,8 @@ async function runTests() {
 
   // 1. Setup Test Users
   const customerEmail = 'test_customer_ai@autogenuine.com'
-  const adminEmail = 'admin@autogenuine.com'
-  const ownerEmail = 'owner@autogenuine.com'
+  const adminEmail = process.env.ADMIN_EMAIL || 'adminautogenuine@gmail.com'
+  const ownerEmail = process.env.OWNER_EMAIL || 'OwnerAutogenuine@gmail.com'
 
   let customer = await User.findOne({ email: customerEmail })
   if (!customer) {
