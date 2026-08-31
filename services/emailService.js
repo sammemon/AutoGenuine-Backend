@@ -13,8 +13,8 @@ export function getTransporter() {
   const host = process.env.SMTP_HOST || 'smtp.gmail.com'
   const user = (process.env.SMTP_USER || 'sm275665@gmail.com').trim()
   const pass = (process.env.SMTP_PASS || 'jcef kbev socn qavm').replace(/^["']|["']$/g, '').trim()
-  const port = parseInt(process.env.SMTP_PORT || '465', 10)
-  const secure = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === 'true' : true
+  const port = parseInt(process.env.SMTP_PORT || '587', 10)
+  const secure = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === 'true' : port === 465
 
   if (!host || !user || !pass) {
     // Graceful fallback when SMTP credentials are not yet set
