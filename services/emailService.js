@@ -11,8 +11,8 @@ export function getTransporter() {
   if (transporter) return transporter
 
   const host = process.env.SMTP_HOST || 'smtp.gmail.com'
-  const user = process.env.SMTP_USER || 'sm275665@gmail.com'
-  const pass = process.env.SMTP_PASS || 'jcef kbev socn qavm'
+  const user = (process.env.SMTP_USER || 'sm275665@gmail.com').trim()
+  const pass = (process.env.SMTP_PASS || 'jcef kbev socn qavm').replace(/^["']|["']$/g, '').trim()
   const port = parseInt(process.env.SMTP_PORT || '465', 10)
   const secure = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === 'true' : true
 
@@ -23,6 +23,7 @@ export function getTransporter() {
 
   try {
     transporter = nodemailer.createTransport({
+      service: 'gmail',
       host,
       port,
       secure,
@@ -65,7 +66,7 @@ export async function verifySmtpConnection() {
 }
 
 /**
- * Sends an email using pure Nodemailer SMTP.
+ * Sends an email using pure Nodemailer Gmail SMTP with optional Gmail HTTPS Relay fallback.
  * Never throws an error that crashes the calling business logic.
  */
 export async function sendEmail({ to, subject, html, text }) {
@@ -96,7 +97,31 @@ export async function sendEmail({ to, subject, html, text }) {
 
     const recipients = Array.isArray(recipientTo) ? recipientTo : [recipientTo]
 
-    // Pure Nodemailer SMTP Engine
+    // 1. Check if Gmail HTTPS Web App Relay URL is set (for cloud hosts like Railway that block TCP SMTP ports 25, 465, 587)
+    const relayUrl = process.env.GMAIL_RELAY_URL || process.env.GMAIL_HTTP_URL
+    if (relayUrl) {
+      try {
+        const res = await fetch(relayUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: recipients,
+            subject,
+            html,
+            text: text || subject,
+            from: process.env.SMTP_USER || 'sm275665@gmail.com',
+          }),
+        })
+        if (res.ok) {
+          console.log(`✉️ [emailService] (Gmail HTTPS Relay) Email sent successfully to ${recipients.join(', ')}`)
+          return { success: true, messageId: `gmail_relay_${Date.now()}` }
+        }
+      } catch (relayErr) {
+        console.warn('⚠️ [emailService] Gmail HTTPS Relay notice:', relayErr.message)
+      }
+    }
+
+    // 2. Pure Nodemailer Gmail SMTP Engine
     const transport = getTransporter()
     if (!transport) {
       console.log(`ℹ️ [emailService] Email dispatch skipped (SMTP credentials missing). Target: ${recipients.join(', ')} | Subject: "${subject}"`)
