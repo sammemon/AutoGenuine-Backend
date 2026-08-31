@@ -12,18 +12,24 @@ export function getTransporter() {
 
   const host = process.env.SMTP_HOST || 'smtp.gmail.com'
   const user = (process.env.SMTP_USER || 'sm275665@gmail.com').trim()
-  const pass = (process.env.SMTP_PASS || 'jcef kbev socn qavm').replace(/^["']|["']$/g, '').trim()
+  const pass = (process.env.SMTP_PASS || '').replace(/^["']|["']$/g, '').trim()
   const port = parseInt(process.env.SMTP_PORT || '587', 10)
   const secure = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === 'true' : port === 465
+  const isProduction = process.env.NODE_ENV === 'production'
 
   if (!host || !user || !pass) {
     // Graceful fallback when SMTP credentials are not yet set
+    console.log('ℹ️ [emailService] Direct SMTP unavailable (SMTP_PASS not set) — relying on Gmail HTTPS Relay if configured')
     return null
   }
 
   try {
+    // NOTE: `service: 'gmail'` is intentionally omitted here. Nodemailer's
+    // "service" shorthand silently overrides host/port with its own Gmail
+    // defaults, which conflicted with our explicit SMTP_HOST/SMTP_PORT and
+    // caused connection timeouts on hosts (like Railway) that block direct
+    // SMTP ports. Letting host/port take precedence avoids that conflict.
     transporter = nodemailer.createTransport({
-      service: 'gmail',
       host,
       port,
       secure,
@@ -32,9 +38,11 @@ export function getTransporter() {
       greetingTimeout: 10000,
       socketTimeout: 15000,
       tls: {
-        rejectUnauthorized: false,
+        // Only relax certificate validation outside of production.
+        rejectUnauthorized: isProduction,
       },
     })
+    console.log(`ℹ️ [emailService] Direct SMTP transporter configured (host=${host}, port=${port}, secure=${secure})`)
     return transporter
   } catch (err) {
     console.error('❌ [emailService] Transporter creation failed:', err.message)
@@ -66,8 +74,9 @@ export async function verifySmtpConnection() {
 }
 
 /**
- * Sends an email using pure Nodemailer Gmail SMTP with optional Gmail HTTPS Relay fallback.
- * Never throws an error that crashes the calling business logic.
+ * Sends an email. Tries the Gmail HTTPS Relay first (if GMAIL_RELAY_URL/GMAIL_HTTP_URL
+ * is configured) to avoid SMTP port blocking on hosts like Railway, then falls back
+ * to direct Nodemailer SMTP. Never throws an error that crashes the calling business logic.
  */
 export async function sendEmail({ to, subject, html, text }) {
   try {
@@ -97,9 +106,12 @@ export async function sendEmail({ to, subject, html, text }) {
 
     const recipients = Array.isArray(recipientTo) ? recipientTo : [recipientTo]
 
-    // 1. Check if Gmail HTTPS Web App Relay URL is set (for cloud hosts like Railway that block TCP SMTP ports 25, 465, 587)
+    // 1. Try Gmail HTTPS Relay FIRST (for cloud hosts like Railway that block direct
+    // TCP SMTP ports 25, 465, 587). Attempting this before any SMTP call avoids
+    // wasting the ~10-15s SMTP connection timeout on hosts where it can never succeed.
     const relayUrl = process.env.GMAIL_RELAY_URL || process.env.GMAIL_HTTP_URL
     if (relayUrl) {
+      console.log(`📡 [emailService] Using Gmail HTTPS Relay path (GMAIL_RELAY_URL configured) → ${recipients.join(', ')}`)
       try {
         const res = await fetch(relayUrl, {
           method: 'POST',
@@ -116,15 +128,17 @@ export async function sendEmail({ to, subject, html, text }) {
           console.log(`✉️ [emailService] (Gmail HTTPS Relay) Email sent successfully to ${recipients.join(', ')}`)
           return { success: true, messageId: `gmail_relay_${Date.now()}` }
         }
+        console.warn(`⚠️ [emailService] Gmail HTTPS Relay responded with status ${res.status} — falling back to direct SMTP`)
       } catch (relayErr) {
-        console.warn('⚠️ [emailService] Gmail HTTPS Relay notice:', relayErr.message)
+        console.warn('⚠️ [emailService] Gmail HTTPS Relay failed, falling back to direct SMTP:', relayErr.message)
       }
     }
 
-    // 2. Pure Nodemailer Gmail SMTP Engine
+    // 2. Direct SMTP fallback (only reached if no relay is configured, or the relay attempt failed)
+    console.log(`📮 [emailService] Using direct SMTP path → ${recipients.join(', ')}`)
     const transport = getTransporter()
     if (!transport) {
-      console.log(`ℹ️ [emailService] Email dispatch skipped (SMTP credentials missing). Target: ${recipients.join(', ')} | Subject: "${subject}"`)
+      console.log(`ℹ️ [emailService] Email dispatch skipped (SMTP credentials missing and no Gmail HTTPS Relay configured). Target: ${recipients.join(', ')} | Subject: "${subject}"`)
       return { success: false, reason: 'SMTP credentials missing' }
     }
 
