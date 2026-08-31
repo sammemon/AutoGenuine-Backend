@@ -27,9 +27,9 @@ export function getTransporter() {
       port,
       secure,
       auth: { user, pass },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 8000,
       tls: {
         rejectUnauthorized: false,
       },
@@ -65,7 +65,7 @@ export async function verifySmtpConnection() {
 }
 
 /**
- * Sends an email using Nodemailer.
+ * Sends an email using Brevo/Resend HTTPS REST API or Nodemailer SMTP.
  * Never throws an error that crashes the calling business logic.
  */
 export async function sendEmail({ to, subject, html, text }) {
@@ -94,10 +94,69 @@ export async function sendEmail({ to, subject, html, text }) {
       recipientTo = recipientTo.map(remapEmail)
     }
 
-    // Nodemailer SMTP Engine (Resend API method removed per configuration)
+    const recipients = Array.isArray(recipientTo) ? recipientTo : [recipientTo]
+
+    // 1. HTTPS REST API Engine: Brevo (Sendinblue) API (bypasses cloud server SMTP port blocks 100%)
+    if (process.env.BREVO_API_KEY) {
+      try {
+        const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: {
+            'api-key': process.env.BREVO_API_KEY,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({
+            sender: { name: 'AutoGenuine Parts', email: process.env.SMTP_USER || 'sm275665@gmail.com' },
+            to: recipients.map((email) => ({ email })),
+            subject,
+            htmlContent: html,
+            textContent: text || subject,
+          }),
+        })
+        const data = await res.json()
+        if (res.ok && data.messageId) {
+          console.log(`✉️ [emailService] (Brevo HTTPS) Email sent successfully to ${recipients.join(', ')} (ID: ${data.messageId})`)
+          return { success: true, messageId: data.messageId }
+        }
+        console.warn(`⚠️ [emailService] Brevo HTTPS API notice: ${JSON.stringify(data)}. Falling back to SMTP...`)
+      } catch (apiErr) {
+        console.warn('⚠️ [emailService] Brevo HTTPS API request failed:', apiErr.message)
+      }
+    }
+
+    // 2. HTTPS REST API Engine: Resend API (if configured)
+    if (process.env.RESEND_API_KEY) {
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: process.env.EMAIL_FROM || 'AutoGenuine Parts <onboarding@resend.dev>',
+            to: recipients,
+            subject,
+            html,
+            text: text || subject,
+          }),
+        })
+        const data = await res.json()
+        if (res.ok && data.id) {
+          console.log(`✉️ [emailService] (Resend HTTPS) Email sent successfully to ${recipients.join(', ')} (ID: ${data.id})`)
+          return { success: true, messageId: data.id }
+        }
+        console.warn(`⚠️ [emailService] Resend HTTPS notice: ${data.message || JSON.stringify(data)}. Falling back to SMTP...`)
+      } catch (apiErr) {
+        console.warn('⚠️ [emailService] Resend HTTPS request failed:', apiErr.message)
+      }
+    }
+
+    // 3. Nodemailer SMTP Engine (Port 465 / 587)
     const transport = getTransporter()
     if (!transport) {
-      console.log(`ℹ️ [emailService] Email dispatch skipped (SMTP credentials missing). Target: ${recipientTo} | Subject: "${subject}"`)
+      console.log(`ℹ️ [emailService] Email dispatch skipped (SMTP credentials missing). Target: ${recipients.join(', ')} | Subject: "${subject}"`)
       return { success: false, reason: 'SMTP credentials missing' }
     }
 
@@ -107,7 +166,7 @@ export async function sendEmail({ to, subject, html, text }) {
     const mailOptions = {
       from,
       replyTo,
-      to: recipientTo,
+      to: recipients.length === 1 ? recipients[0] : recipients,
       subject,
       text: text || subject,
       html,
@@ -121,7 +180,7 @@ export async function sendEmail({ to, subject, html, text }) {
     }
 
     const info = await transport.sendMail(mailOptions)
-    console.log(`✉️ [emailService] Email sent successfully to ${Array.isArray(recipientTo) ? recipientTo.join(', ') : recipientTo} (MessageId: ${info.messageId})`)
+    console.log(`✉️ [emailService] Email sent successfully to ${recipients.join(', ')} (MessageId: ${info.messageId})`)
 
     return {
       success: true,
