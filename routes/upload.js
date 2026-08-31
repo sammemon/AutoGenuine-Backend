@@ -12,11 +12,14 @@ router.post('/', requireAuth, handleUpload, (req, res) => {
     return res.status(400).json({ error: 'No image file uploaded.' })
   }
 
-  // Relative path served statically via Express at /uploads/:filename
+  const protocol = req.get('x-forwarded-proto') || req.protocol || 'https'
+  const host = req.get('host')
   const relativeUrl = `/uploads/${file.filename}`
+  const absoluteUrl = `${protocol}://${host}${relativeUrl}`
 
   res.status(201).json({
-    url: relativeUrl,
+    url: absoluteUrl,
+    relativeUrl,
     filename: file.filename,
     originalName: file.originalname,
     mimetype: file.mimetype,
